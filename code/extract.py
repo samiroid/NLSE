@@ -10,7 +10,6 @@ index_path = 'data/pkl/wrd2idx.pkl'
 emb_zip    = 'embeddings/str_skip_600.tar.gz'    
 pretrained_emb = 'data/pkl/Emb.pkl'
 
-in_folder = 'data/txt/%s'
 out_folder = 'data/pkl/%s.pkl'
 
 
@@ -116,7 +115,7 @@ def save_features(file_names, one_hot=False):
     #READ CORPORA
     datasets = []
     for fname in file_names:
-        datasets.append(read_corpus(in_folder % fname)) 
+        datasets.append(read_corpus(fname)) 
     
     wrd2idx = {}
     idx = 0        
@@ -137,26 +136,27 @@ def save_features(file_names, one_hot=False):
     train_raw_x, train_raw_y = extract_feats(datasets[0], wrd2idx, one_hot=False) 
     #shuffle traininig data and split into train and dev
     train_x, train_y, dev_x, dev_y = split_train_dev(train_raw_x, train_raw_y, perc=0.8)
-    
     if one_hot:
         train_x = get_onehot(len(wrd2idx), train_x)
         dev_x   = get_onehot(len(wrd2idx), dev_x)        
-    #save training/dev features        
-    out_file, _ = os.path.splitext(file_names[0])
-    with open(out_folder % out_file,"w") as fid:
-        print "saving features: %s" % (out_folder % out_file)
+    #save training features        
+    out, _ = os.path.splitext(os.path.basename(file_names[0]))    
+    out_file    = out_folder % out    
+    with open(out_file,"w") as fid:
+        print "saving features: %s" % (out_file)
         cPickle.dump([train_x, train_y], fid, cPickle.HIGHEST_PROTOCOL)
-
-    with open(out_folder % "dev","w") as fid:
-        print "saving features: %s" % (out_folder % "dev")
+    #save dev features        
+    out_file = out_folder % "dev"
+    with open(out_file, "w") as fid:
+        print "saving features: %s" % out_file
         cPickle.dump([dev_x, dev_y], fid, cPickle.HIGHEST_PROTOCOL)
-
-
+    #extract and save test features        
     for fname, dataset in zip(file_names[1:], datasets[1:]):
         x, y = extract_feats(dataset, wrd2idx, one_hot)
-        out_file = os.path.splitext(fname)[0]
-        with open(out_folder % out_file, "w") as fid:
-            print "saving features: %s" % (out_folder % out_file)
+        out, _ = os.path.splitext(os.path.basename(fname))
+        out_file    = out_folder % out 
+        with open(out_file, "w") as fid:
+            print "saving features: %s" % (out_file)
             cPickle.dump([x, y], fid, cPickle.HIGHEST_PROTOCOL)
 
 
@@ -204,8 +204,7 @@ def save_pruned_embeddings(wrd2idx, out_file):
                 if wrd in wrd2idx:
                     fod.write(line)                        
 
-if __name__ == "__main__":    
-    #sanity checks    
+if __name__ == "__main__":            
     MESSAGE = "python code/extract.py \n [-f train_file test_file_1 ... test_file_n]: extract features and vocabulary from files in folder /data/txt/ \n [-e path_to_embeddings_file]: create a matrix of pretrained embeddings using the vocabulary extracted using the -f option"
     opt = sys.argv[1].lower()
     if opt == "-f":        

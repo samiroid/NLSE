@@ -4,67 +4,62 @@ Sub-space training
 '''
 import sys
 sys.path.append('code')
-import shutil
+
+import cPickle
+import FMeasure as Fmes
+from ipdb import set_trace
+import nlse
 import numpy as np
 import theano
 import theano.tensor as T
-import cPickle
-#
-import nlse
-#
-import FMeasure as Fmes
 
-# DEBUGGING
-from ipdb import set_trace
+####################################
+#           CONFIG 
+####################################
+    
+# TRAIN 
+n_iter  = 5
+lrate   = np.array(0.01).astype(theano.config.floatX)
+# Pre-trained embeddings
+pretrained_emb = 'data/pkl/Emb.pkl'
+# Sub space size 
+sub_size = 10
 
 def main(train_data, dev_data, model_path):
 
     ####################################
-    #           CONFIG 
-    ####################################
-    
-    # TRAIN 
-    n_iter  = 6
-    lrate   = np.array(0.01).astype(theano.config.floatX)
-
-    # MODEL 
-    # Pre-trained embeddings
-    pretrained_emb = 'data/pkl/Emb.pkl'
-    # Sub space size 
-    sub_size = 10
-
-    # Create model
-    nn = nlse.NLSE(pretrained_emb, sub_size=sub_size)
-    
-    # SEMEVAL TRAIN TWEETS
+    #   LOAD TRAIN/DEV DATA 
+    ####################################    
     print "Training data: %s\nDev data: %s " % (train_data, dev_data)
     print "Model: %s" % model_path
     with open(train_data, 'rb') as fid:
         train_x, train_y = cPickle.load(fid) 
     with open(dev_data, 'rb') as fid:
         dev_x, dev_y = cPickle.load(fid) 
-    
-    #reformat the labels for the NLSE model
-    train_y = [np.array(dy).astype('int32')[None] for dy in train_y]
-    dev_y = [np.array(dy).astype('int32')[None] for dy in dev_y]
-    
+
     # RESHAPE TRAIN DATA AS A SINGLE NUMPY ARRAY
-    # Start and end indices
-    # RESHAPE TRAIN DATA AS A SINGLE NUMPY ARRAY
-    # Start and end indices
+    # Start and end indices    
     lens = np.array([len(tr) for tr in train_x]).astype('int32')
     st   = np.cumsum(np.concatenate((np.zeros((1, )), lens[:-1]), 0)).astype('int32')
     ed   = (st + lens).astype('int32')
     x    = np.zeros((ed[-1], 1))
     for i, ins_x in enumerate(train_x):        
         x[st[i]:ed[i]] = ins_x[:, None].astype('int32')         
-    
+
+    #reformat the labelset 
+    train_y = [np.array(dy).astype('int32')[None] for dy in train_y]
+    dev_y = [np.array(dy).astype('int32')[None] for dy in dev_y]
+
     # Train data and instance start and ends
     x  = theano.shared(x.astype('int32'), borrow=True) 
     y  = theano.shared(np.array(train_y).astype('int32'), borrow=True)
     st = theano.shared(st, borrow=True)
-    ed = theano.shared(ed, borrow=True)
+    ed = theano.shared(ed, borrow=True)    
 
+    ####################################
+    #           NLSE Model
+    #################################### 
+    nn = nlse.NLSE(pretrained_emb, sub_size=sub_size)
     # Update rule
     updates = [(pr, pr-lrate*gr) for pr, gr in zip(nn.params, nn.nablas)]
     # Mini-batch
@@ -73,7 +68,9 @@ def main(train_data, dev_data, model_path):
              nn.y  : y[i] }
     train_batch = theano.function(inputs=[i], outputs=nn.F, updates=updates, givens=givens)
 
-    # Epoch loop
+    ####################################
+    #           TRAINING    
+    #################################### 
     last_cr  = None
     best_cr  = [0, 0]
     for i in np.arange(n_iter):
@@ -105,7 +102,7 @@ def main(train_data, dev_data, model_path):
         Fm = Fmes.FmesSemEval(confusionMatrix=ConfMat)        
         # INFO
         if last_cr:
-            # Keep bet model
+            # Keep the best model
             if best_cr[0] < cr:
                 best_cr = [cr, i+1]
             delta_cr = cr - last_cr
@@ -121,16 +118,8 @@ def main(train_data, dev_data, model_path):
             best_cr = [cr, i+1]
         last_cr = cr
 
-        # SAVE MODEL
-        # tmp_model_path = model_path.replace('.pkl','.%d.pkl' % (i+1))
+    # SAVE MODEL    
     nn.save(model_path)
-
-    # Store best model with the original model name
-    # tmp_model_path = model_path.replace('.pkl','.%d.pkl' % best_cr[1])
-    # print "Best model %s -> %s\nDev %2.5f %%" % (tmp_model_path, 
-    #                                              model_path, best_cr[0]*100)
-    # shutil.copy(tmp_model_path, model_path)
-
 
 if __name__ == '__main__':
     MESSAGE = "python code/train.py train_file dev_file model_path"
